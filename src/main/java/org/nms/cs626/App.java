@@ -15,10 +15,9 @@ import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
 
 import java.io.IOException;
-import java.util.Collection;
 import java.util.List;
+import java.util.stream.StreamSupport;
 
-import static org.apache.commons.csv.CSVParser.parse;
 
 public class App extends Configured implements Tool {
     private static final Logger LOG = Logger.getLogger(App.class);
@@ -30,6 +29,7 @@ public class App extends Configured implements Tool {
 
     public int run(String[] args) throws Exception {
         Job job = Job.getInstance(getConf(), "hw1_part1");
+        job.setNumReduceTasks(1);
         job.setJarByClass(this.getClass());
         // Use TextInputFormat, the default unless job.setInputFormatClass is used
         FileInputFormat.addInputPath(job, new Path(args[0]));
@@ -37,11 +37,15 @@ public class App extends Configured implements Tool {
         job.setMapperClass(Map.class);
         job.setReducerClass(Reduce.class);
         job.setOutputKeyClass(Text.class);
+        job.setMapOutputKeyClass(Text.class);
         job.setOutputValueClass(IntWritable.class);
-        return job.waitForCompletion(true) ? 0 : 1;
+        boolean compl = job.waitForCompletion(true);
+        Long pairs  = job.getCounters().findCounter(Reduce.CountersEnum.UNIQUE_OUTPUT_PAIRS).getValue();
+        System.out.println("Unique output pairs: "+pairs.toString());
+        return compl ? 0 : 1;
     }
 
-    public static class Map extends Mapper<LongWritable, Text, OrderedPair, IntWritable> {
+    public static class Map extends Mapper<LongWritable, Text, Text, IntWritable> {
         public void map  (LongWritable offset, Text lineText, Context context)
                 throws IOException, InterruptedException {
             List<CSVRecord> records =  CSVParser
@@ -51,22 +55,22 @@ public class App extends Configured implements Tool {
             if(!OrderedPair.LexicalLessOrEqual(keyPair.left,keyPair.right)){
                 keyPair = keyPair.reverse();
             }
-            context.write(keyPair,new IntWritable(0));
+            System.out.println(keyPair);
+            context.write(keyPair.asText(),new IntWritable(1));
         }
     }
 
-    public static class Reduce extends Reducer<OrderedPair
-            ,Collection<IntWritable>
-            ,OrderedPair
+    public static class Reduce extends Reducer<Text
+            ,IntWritable
+            ,Text
             ,IntWritable>{
-        static enum CountersEnum {UNIQUE_OUTPUT_PAIRS};
+        enum CountersEnum {UNIQUE_OUTPUT_PAIRS}
 
-        public void reduce(OrderedPair keyin, Iterable<IntWritable> valueIn,
-                           Context context) {
-            Counter uniquePairCounter = context.getCounter(CountersEnum.class.getName(),
-                    CountersEnum.UNIQUE_OUTPUT_PAIRS.toString());
-            uniquePairCounter.increment(1);
-
+        public void reduce(Text keyin, Iterable<IntWritable> valueIn,
+                           Context context) throws IOException, InterruptedException {
+            context.getCounter(CountersEnum.UNIQUE_OUTPUT_PAIRS).increment(1);
+            Integer theSum = StreamSupport.stream(valueIn.spliterator(),false).map(IntWritable::get).reduce(0,(a,b)->a+b);
+            context.write(keyin,new IntWritable(theSum));
         }
     }
 }

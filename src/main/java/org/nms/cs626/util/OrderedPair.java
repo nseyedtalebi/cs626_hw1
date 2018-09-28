@@ -1,5 +1,7 @@
 package org.nms.cs626.util;
 
+import org.apache.hadoop.io.Text;
+
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -25,9 +27,13 @@ public class OrderedPair {
         return new OrderedPair(right,left);
     }
 
+    public Text asText(){
+        return new Text(this.toString());
+    }
+
     @Override
     public String toString() {
-        return left+" "+right;
+        return left+","+right;
     }
 
     @Override
